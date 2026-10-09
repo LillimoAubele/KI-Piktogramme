@@ -1,0 +1,8 @@
+# Patient data and derived images - never commit
+data/
+results/
+*.pt
+cv_log.txt
+nohup.out
+__pycache__/
+*.pyc

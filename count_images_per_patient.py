@@ -4,7 +4,7 @@ from collections import defaultdict
 import re
 
 # Select path
-folder = "/home/xrad/KI_Piktogramm/data/Tuebingen/Pat ohne Piktogramm"
+folder = "/home/xrad/KI_Piktogramm/github/KI-Piktogramme/data/anonymisiert/Pat_mit_Piktogramm_cut"
 
 
 
@@ -28,7 +28,7 @@ df["Number"] = df["Patient"].apply(lambda x: int(re.search(r'\d+', x).group()))
 df = df.sort_values(by="Number").drop(columns=["Number"])
 
 # Save as Excel file
-excel_path = os.path.join(folder, "Patienten_Tuebingen_ohne_Piktogramm.xlsx")
+excel_path = os.path.join(folder, "Patienten_Tuebingen_mit_Piktogramm.xlsx")
 df.to_excel(excel_path, index=False)
 
-print("Saved Excel file: Patienten_Tuebingen_ohne_Piktogramm.xlsx")
+print("Saved Excel file: Patienten_Tuebingen_mit_Piktogramm.xlsx")
