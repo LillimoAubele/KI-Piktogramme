@@ -21,6 +21,7 @@ Output: results/cv_<model>/
 Usage:
     python cross_validation.py --model efficientnet_b0
     python cross_validation.py --model resnet50 --folds 5
+    python cross_validation.py --noise-aug      # with noise / blur augmentation
 
 Note: this trains one model per fold, so it takes about k times as long as main.py.
 """
@@ -90,12 +91,14 @@ def main():
     parser.add_argument("--model", default="efficientnet_b0",
                         choices=["efficientnet_b0", "resnet50", "convnext_tiny"])
     parser.add_argument("--folds", type=int, default=5)
+    parser.add_argument("--noise-aug", action="store_true",
+                        help="Train with additional noise / blur augmentation (results/cv_<model>_noiseaug/)")
     args = parser.parse_args()
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    out_dir = os.path.join(RESULTS_DIR, f"cv_{args.model}")
+    out_dir = os.path.join(RESULTS_DIR, f"cv_{args.model}" + ("_noiseaug" if args.noise_aug else ""))
     os.makedirs(out_dir, exist_ok=True)
 
     df = collect_images(SRC_DIR)
@@ -113,7 +116,8 @@ def main():
         os.makedirs(fold_dir, exist_ok=True)
 
         loaders, _ = get_dataloaders_from_df({"train": train, "val": val, "test": test},
-                                             SRC_DIR, img_size=IMG_SIZE, batch_size=BATCH_SIZE)
+                                             SRC_DIR, img_size=IMG_SIZE, batch_size=BATCH_SIZE,
+                                             noise_aug=args.noise_aug)
 
         torch.manual_seed(SEED + k)
         model = build_model(args.model, num_classes=n_classes, pretrained=True)

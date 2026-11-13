@@ -14,6 +14,7 @@ Everything is saved to results/<model_name>/:
 
 Runs automatically at the end of main.py, or standalone on a saved checkpoint:
     python visualization.py --model efficientnet_b0
+    python visualization.py --model efficientnet_b0 --noise-aug   # model trained with --noise-aug
 """
 import argparse
 import os
@@ -33,11 +34,11 @@ from preprocess_data import MEAN, STD, get_dataloaders
 
 # Short class names for plot axes
 SHORT_NAMES = {
-    "1_upper_abdomen_longitudinal_left": "1: UA long. left",
-    "2_upper_abdomen_longitudinal_MCL_right": "2: UA long. MCL right",
-    "3_subcostal_oblique_right": "3: Subcostal oblique",
-    "4_intercostal_right": "4: Intercostal",
-    "5_high_flank_right": "5: High flank",
+    "1_Oberbauchlaengsschnitt_links": "OB li",
+    "2_Oberbauchlaengsschnitt_MCL_rechts": "OB MCL re",
+    "3_Subcostaler_Schraegschnitt_rechts": "Subcostal re",
+    "4_Intercostalschnitt_rechts": "Intercostal re",
+    "5_Hoher_Flankenschnitt_rechts": "Hohe Flanke re",
 }
 
 DPI = 300
@@ -382,10 +383,12 @@ def main():
     parser.add_argument("--model", default="efficientnet_b0",
                         choices=["efficientnet_b0", "resnet50", "convnext_tiny"])
     parser.add_argument("--checkpoint", default=None,
-                        help="Path to the model weights (default: results/<model>/best_model.pt)")
+                        help="Path to the model weights (default: results/<run>/best_model.pt)")
+    parser.add_argument("--noise-aug", action="store_true",
+                        help="Use the model trained with --noise-aug (results/<model>_noiseaug/)")
     args = parser.parse_args()
 
-    out_dir = os.path.join(RESULTS_DIR, args.model)
+    out_dir = os.path.join(RESULTS_DIR, args.model + ("_noiseaug" if args.noise_aug else ""))
     checkpoint = args.checkpoint or os.path.join(out_dir, "best_model.pt")
     device = "cuda" if torch.cuda.is_available() else "cpu"
 

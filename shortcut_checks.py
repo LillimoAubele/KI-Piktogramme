@@ -33,6 +33,7 @@ All results: results/<model>/shortcut_checks/
 Usage:
     python shortcut_checks.py --model efficientnet_b0
     python shortcut_checks.py --geometry-only        # checks 1-3, no trained model needed
+    python shortcut_checks.py --model efficientnet_b0 --noise-aug   # model trained with --noise-aug
 """
 import argparse
 import os
@@ -386,12 +387,15 @@ def main():
     parser.add_argument("--model", default="efficientnet_b0",
                         choices=["efficientnet_b0", "resnet50", "convnext_tiny"])
     parser.add_argument("--checkpoint", default=None,
-                        help="Model weights (default: results/<model>/best_model.pt)")
+                        help="Model weights (default: results/<run>/best_model.pt)")
+    parser.add_argument("--noise-aug", action="store_true",
+                        help="Use the model trained with --noise-aug (results/<model>_noiseaug/)")
     parser.add_argument("--geometry-only", action="store_true",
                         help="Only run checks 1-3 (no trained model needed)")
     args = parser.parse_args()
 
-    out_dir = os.path.join(RESULTS_DIR, args.model, "shortcut_checks")
+    run_name = args.model + ("_noiseaug" if args.noise_aug else "")
+    out_dir = os.path.join(RESULTS_DIR, run_name, "shortcut_checks")
     os.makedirs(out_dir, exist_ok=True)
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -413,7 +417,7 @@ def main():
 
     masking = None
     if not args.geometry_only:
-        checkpoint = args.checkpoint or os.path.join(RESULTS_DIR, args.model, "best_model.pt")
+        checkpoint = args.checkpoint or os.path.join(RESULTS_DIR, run_name, "best_model.pt")
         class_names = [CLASSES[k] for k in sorted(CLASSES)]
         model = build_model(args.model, num_classes=len(class_names), pretrained=False)
         model.load_state_dict(torch.load(checkpoint, map_location=device))

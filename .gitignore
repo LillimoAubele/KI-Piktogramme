@@ -6,3 +6,6 @@ cv_log.txt
 nohup.out
 __pycache__/
 *.pyc
+old_split_overview.csv
+*_log.txt
+*.log

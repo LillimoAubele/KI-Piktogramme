@@ -13,6 +13,7 @@ import re
 import shutil
 
 import pandas as pd
+import torch
 from PIL import Image
 from sklearn.model_selection import StratifiedGroupKFold
 from torch.utils.data import DataLoader, Dataset
@@ -22,11 +23,11 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg")
 
 # Label digit -> class folder name
 CLASSES = {
-    1: "Oberbauchlängsschnitt links",
-    2: "Oberbauchlängsschnitt MCL rechts",
-    3: "Subcostaler Schrägschnitt",
-    4: "Intercostalschnitt",
-    5: "Hoher Flankenschnit",
+    1: "1_Oberbauchlaengsschnitt_links",
+    2: "2_Oberbauchlaengsschnitt_MCL_rechts",
+    3: "3_Subcostaler_Schraegschnitt_rechts",
+    4: "4_Intercostalschnitt_rechts",
+    5: "5_Hoher_Flankenschnitt_rechts",
 }
 
 # ImageNet statistics (the pretrained backbones expect these)
@@ -107,19 +108,60 @@ def prepare_dataset(src_dir, dst_dir, seed=42):
 # ---------------------------------------------------------------------------
 # Transforms and DataLoaders
 # ---------------------------------------------------------------------------
-def get_transforms(img_size=224):
+class RandomGaussianNoise:
+    """Additive Gaussian noise on a [0, 1] image tensor, identical in all 3 (grayscale) channels."""
+
+    def __init__(self, p=0.5, std=(0.0, 0.1)):
+        self.p, self.std = p, std
+
+    def __call__(self, x):
+        if torch.rand(1).item() >= self.p:
+            return x
+        std = torch.empty(1).uniform_(*self.std).item()
+        noise = torch.randn(1, *x.shape[1:]) * std
+        return (x + noise).clamp(0, 1)
+
+
+class RandomSpeckle:
+    """Multiplicative, slightly smoothed (speckle-like) noise on a [0, 1] image tensor."""
+
+    def __init__(self, p=0.5, std=(0.0, 0.4)):
+        self.p, self.std = p, std
+
+    def __call__(self, x):
+        if torch.rand(1).item() >= self.p:
+            return x
+        std = torch.empty(1).uniform_(*self.std).item()
+        noise = torch.randn(1, 1, *x.shape[1:])
+        noise = torch.nn.functional.avg_pool2d(noise, 3, stride=1, padding=1)[0]  # grain of ~2 px
+        noise = noise / (noise.std() + 1e-8)
+        return (x * (1 + std * noise)).clamp(0, 1)
+
+
+def get_transforms(img_size=224, noise_aug=False):
     """
     Train transforms with light augmentation, eval transforms without.
     IMPORTANT: no horizontal flipping - left/right is class-relevant here!
+
+    noise_aug=True additionally applies, each at random:
+      Gaussian blur (p = 0.3, sigma 0.1-2 px), speckle noise (p = 0.5, relative std 0-0.4)
+      and additive Gaussian noise (p = 0.5, std 0-0.1)
+    to make the model robust to image noise and reduced sharpness.
     """
-    train_tf = transforms.Compose([
+    train_steps = [
         transforms.Grayscale(num_output_channels=3),  # ultrasound is grayscale, backbones expect 3 channels
         transforms.RandomResizedCrop(img_size, scale=(0.8, 1.0), ratio=(0.9, 1.1)),
         transforms.RandomRotation(10),
         transforms.ColorJitter(brightness=0.2, contrast=0.2),
-        transforms.ToTensor(),
-        transforms.Normalize(MEAN, STD),
-    ])
+    ]
+    if noise_aug:
+        train_steps.append(transforms.RandomApply([transforms.GaussianBlur(9, sigma=(0.1, 2.0))], p=0.3))
+    train_steps.append(transforms.ToTensor())
+    if noise_aug:
+        train_steps += [RandomSpeckle(p=0.5, std=(0.0, 0.4)), RandomGaussianNoise(p=0.5, std=(0.0, 0.1))]
+    train_steps.append(transforms.Normalize(MEAN, STD))
+    train_tf = transforms.Compose(train_steps)
+
     eval_tf = transforms.Compose([
         transforms.Grayscale(num_output_channels=3),
         transforms.Resize((img_size, img_size)),
@@ -129,9 +171,9 @@ def get_transforms(img_size=224):
     return train_tf, eval_tf
 
 
-def get_dataloaders(data_dir, img_size=224, batch_size=32, num_workers=4):
+def get_dataloaders(data_dir, img_size=224, batch_size=32, num_workers=4, noise_aug=False):
     """Create ImageFolder datasets and DataLoaders for train / val / test."""
-    train_tf, eval_tf = get_transforms(img_size)
+    train_tf, eval_tf = get_transforms(img_size, noise_aug=noise_aug)
     datasets_ = {
         split: datasets.ImageFolder(os.path.join(data_dir, split), train_tf if split == "train" else eval_tf)
         for split in ["train", "val", "test"]
@@ -168,12 +210,13 @@ class DataFrameDataset(Dataset):
         return self.transform(img), label
 
 
-def get_dataloaders_from_df(split_dfs, src_dir, img_size=224, batch_size=32, num_workers=4):
+def get_dataloaders_from_df(split_dfs, src_dir, img_size=224, batch_size=32, num_workers=4,
+                            noise_aug=False):
     """
     split_dfs: {"train": df, "val": df, "test": df}
     Returns DataLoaders (train shuffled, val/test in DataFrame order) and the class names.
     """
-    train_tf, eval_tf = get_transforms(img_size)
+    train_tf, eval_tf = get_transforms(img_size, noise_aug=noise_aug)
     loaders = {}
     for split, df in split_dfs.items():
         ds = DataFrameDataset(df, src_dir, train_tf if split == "train" else eval_tf)

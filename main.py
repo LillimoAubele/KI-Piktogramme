@@ -5,8 +5,10 @@ Usage:
     python main.py                          # split data, train, evaluate on test set
     python main.py --skip-split             # reuse an existing split
     python main.py --model resnet50         # try another backbone
+    python main.py --skip-split --noise-aug # train with noise / blur augmentation
 
-All outputs (checkpoint, reports, plots, Grad-CAM) are written to results/<model>/.
+All outputs (checkpoint, reports, plots, Grad-CAM) are written to results/<model>/,
+or to results/<model>_noiseaug/ when --noise-aug is used.
 """
 import argparse
 import os
@@ -39,13 +41,17 @@ def main():
                         choices=["efficientnet_b0", "resnet50", "convnext_tiny"])
     parser.add_argument("--skip-split", action="store_true",
                         help="Do not re-create the train/val/test split")
+    parser.add_argument("--noise-aug", action="store_true",
+                        help="Train with additional noise / blur augmentation (results/<model>_noiseaug/)")
     args = parser.parse_args()
 
     torch.manual_seed(SEED)
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Device: {device}")
 
-    out_dir = os.path.join(RESULTS_DIR, args.model)
+    run_name = args.model + ("_noiseaug" if args.noise_aug else "")
+    out_dir = os.path.join(RESULTS_DIR, run_name)
+    print(f"Results: {out_dir} | noise augmentation: {'on' if args.noise_aug else 'off'}")
     os.makedirs(out_dir, exist_ok=True)
 
     # 1) Preprocessing + patient-level split
@@ -58,7 +64,8 @@ def main():
             shutil.rmtree(DATA_DIR)
         prepare_dataset(SRC_DIR, DATA_DIR, seed=SEED)
 
-    loaders, class_names = get_dataloaders(DATA_DIR, img_size=IMG_SIZE, batch_size=BATCH_SIZE)
+    loaders, class_names = get_dataloaders(DATA_DIR, img_size=IMG_SIZE, batch_size=BATCH_SIZE,
+                                           noise_aug=args.noise_aug)
     print(f"Classes: {class_names}")
 
     # 2) Model
@@ -72,7 +79,7 @@ def main():
     print("\n=== Test set ===")
     report(model, loaders["test"], device, class_names)
 
-    # 5) Reports, plots and Grad-CAM -> results/<model>/
+    # 5) Reports, plots and Grad-CAM -> results/<run_name>/
     run_visualization(model, args.model, loaders, class_names, device, out_dir, history=history)
 
 
